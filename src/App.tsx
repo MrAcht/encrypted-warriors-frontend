@@ -229,17 +229,22 @@ function App() {
     if (!contract || !account) return;
     
     try {
+      console.log("🔍 Fetching game state for account:", account);
+      
       // Get the game code for the current player
       const playerGameCode = await contract.playerGameCode(account);
+      console.log("📋 Player game code:", playerGameCode);
       
       if (playerGameCode && playerGameCode !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
         // Player is in a game, get game details
         const gameInfo = await contract.getGame(playerGameCode);
         const [creator, player2] = gameInfo;
+        console.log("🎮 Game info - Creator:", creator, "Player2:", player2);
         
         // Check if both players have joined
         // The creator is always set when game is created, so we only need to check if player2 is set
         const playersJoined = player2 !== "0x0000000000000000000000000000000000000000" ? 2 : 1;
+        console.log("👥 Players joined:", playersJoined);
         
         // Handle lastCombatOutcome with proper null checking
         let lastCombatOutcome: number | null = null;
@@ -260,6 +265,8 @@ function App() {
             lastCombatOutcome
           };
           
+          console.log("🔄 Updating game state:", newState);
+          
           // Check if second player just joined
           if (playersJoined === 2 && prev.playersJoined === 1) {
             setToast("Second player joined! Game is ready to begin!");
@@ -269,6 +276,7 @@ function App() {
           return newState;
         });
       } else {
+        console.log("❌ Player not in any game, resetting state");
         // Player is not in any game, reset state
         setGameState({
           playersJoined: 0,
@@ -313,8 +321,9 @@ function App() {
     
     try {
       const interval = setInterval(() => {
+        console.log("⏰ Polling for game state updates...");
         memoizedFetchGameState();
-      }, 5000); // Poll every 5 seconds
+      }, 3000); // Poll every 3 seconds (more frequent)
       
       return () => clearInterval(interval);
     } catch (err) {
@@ -621,7 +630,20 @@ function App() {
               </div>
               
               <button
-                onClick={memoizedFetchGameState}
+                onClick={async () => {
+                  console.log("🔄 Manual refresh triggered");
+                  // Force a fresh fetch by clearing any potential caching
+                  if (contract && account) {
+                    try {
+                      // Clear any cached values and force fresh contract calls
+                      await memoizedFetchGameState();
+                      setToast("Game state refreshed!");
+                    } catch (err) {
+                      console.error("Manual refresh failed:", err);
+                      setToast("Refresh failed. Please try again.");
+                    }
+                  }
+                }}
                 className="mt-3 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1 rounded transition-colors"
               >
                 🔄 Refresh Game State
