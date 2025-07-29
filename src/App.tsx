@@ -229,17 +229,17 @@ function App() {
     if (!contract || !account) return;
     
     try {
-              // Get the game code for the current player
-        const playerGameCode = await contract.playerGameCode(account);
-        
-        if (playerGameCode && playerGameCode !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
-          // Player is in a game, get game details
-          const gameInfo = await contract.getGame(playerGameCode);
-          const [creator, player2] = gameInfo;
+      // Get the game code for the current player
+      const playerGameCode = await contract.playerGameCode(account);
+      
+      if (playerGameCode && playerGameCode !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
+        // Player is in a game, get game details
+        const gameInfo = await contract.getGame(playerGameCode);
+        const [creator, player2] = gameInfo;
         
         // Check if both players have joined
-        const playersJoined = (creator !== "0x0000000000000000000000000000000000000000" && 
-                              player2 !== "0x0000000000000000000000000000000000000000") ? 2 : 1;
+        // The creator is always set when game is created, so we only need to check if player2 is set
+        const playersJoined = player2 !== "0x0000000000000000000000000000000000000000" ? 2 : 1;
         
         // Handle lastCombatOutcome with proper null checking
         let lastCombatOutcome: number | null = null;
