@@ -231,6 +231,28 @@ function App() {
     try {
       console.log("🔍 Fetching game state for account:", account);
       
+      // Check if provider and account are still valid
+      if (!provider || !provider.getSigner) {
+        console.log("⚠️ Provider not available, attempting to reconnect...");
+        setError("Wallet connection lost. Please reconnect your wallet.");
+        return;
+      }
+      
+      // Verify account is still connected
+      try {
+        const signer = provider.getSigner();
+        const currentAccount = await signer.getAddress();
+        if (currentAccount !== account) {
+          console.log("⚠️ Account changed, updating...");
+          setAccount(currentAccount);
+          return;
+        }
+      } catch (err) {
+        console.log("⚠️ Cannot get signer address, wallet may be disconnected");
+        setError("Wallet disconnected. Please reconnect your wallet.");
+        return;
+      }
+      
       // Get the game code for the current player
       const playerGameCode = await contract.playerGameCode(account);
       console.log("📋 Player game code:", playerGameCode);
@@ -287,9 +309,23 @@ function App() {
           lastCombatOutcome: null
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error fetching game state:", err);
-      setError("Failed to fetch game state");
+      
+      // Check if it's a wallet connection error
+      if (err?.message && typeof err.message === 'string' && err.message.includes("unknown account")) {
+        console.log("🔄 Wallet connection error detected, attempting to reconnect...");
+        setError("Wallet connection lost. Please reconnect your wallet.");
+        
+        // Try to reconnect automatically
+        try {
+          await handleConnectWallet();
+        } catch (reconnectErr) {
+          console.log("Failed to auto-reconnect:", reconnectErr);
+        }
+      } else {
+        setError("Failed to fetch game state");
+      }
     }
   }
 
@@ -629,25 +665,42 @@ function App() {
                 )}
               </div>
               
-              <button
-                onClick={async () => {
-                  console.log("🔄 Manual refresh triggered");
-                  // Force a fresh fetch by clearing any potential caching
-                  if (contract && account) {
-                    try {
-                      // Clear any cached values and force fresh contract calls
-                      await memoizedFetchGameState();
-                      setToast("Game state refreshed!");
-                    } catch (err) {
-                      console.error("Manual refresh failed:", err);
-                      setToast("Refresh failed. Please try again.");
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={async () => {
+                    console.log("🔄 Manual refresh triggered");
+                    // Force a fresh fetch by clearing any potential caching
+                    if (contract && account) {
+                      try {
+                        // Clear any cached values and force fresh contract calls
+                        await memoizedFetchGameState();
+                        setToast("Game state refreshed!");
+                      } catch (err) {
+                        console.error("Manual refresh failed:", err);
+                        setToast("Refresh failed. Please try again.");
+                      }
                     }
-                  }
-                }}
-                className="mt-3 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1 rounded transition-colors"
-              >
-                🔄 Refresh Game State
-              </button>
+                  }}
+                  className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1 rounded transition-colors"
+                >
+                  🔄 Refresh Game State
+                </button>
+                <button
+                  onClick={async () => {
+                    console.log("🔌 Manual reconnect triggered");
+                    try {
+                      await handleConnectWallet();
+                      setToast("Wallet reconnected!");
+                    } catch (err) {
+                      console.error("Manual reconnect failed:", err);
+                      setToast("Reconnect failed. Please try again.");
+                    }
+                  }}
+                  className="text-xs bg-blue-700 hover:bg-blue-600 text-gray-300 px-3 py-1 rounded transition-colors"
+                >
+                  🔌 Reconnect Wallet
+                </button>
+              </div>
             </div>
             {/* Replace the main Join Game button with two options if not joined and game not full */}
             {!hasJoined && gameState.playersJoined < 2 && (
