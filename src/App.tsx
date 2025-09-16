@@ -47,7 +47,7 @@ function App() {
   });
   const [combatLog, setCombatLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [appKey, setAppKey] = useState(0);
   
   // Add contract address state
   const [contractAddress, setContractAddress] = useState<string>(CONTRACT_ADDRESS);
@@ -441,7 +441,7 @@ function App() {
       console.error("Error in fetchGameState effect:", err);
       setError("Failed to initialize game state");
     }
-  }, [fetchGameState, contract, account, refreshNonce]);
+  }, [fetchGameState, contract, account]);
 
   // Listen for PlayerJoined event
   useEffect(() => {
@@ -768,7 +768,7 @@ function App() {
                 <button
                   onClick={async () => {
                     console.log("🔄 Manual refresh triggered");
-                    setRefreshNonce(Math.random());
+                    setAppKey(Math.random());
                   }}
                   className="flex-1 transition-all duration-200 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white py-2 px-4 rounded-lg shadow-lg font-semibold flex items-center justify-center gap-2"
                 >
@@ -894,7 +894,7 @@ function App() {
   }, [toast]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-700 text-white font-sans">
+    <div key={appKey} className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-700 text-white font-sans">
       {/* Network warning banner */}
       {wrongNetwork && (
         <div className="fixed top-0 left-0 w-full z-50 bg-red-700 text-white flex items-center justify-center gap-4 py-3 px-4 font-semibold shadow-lg animate-fade-in">
