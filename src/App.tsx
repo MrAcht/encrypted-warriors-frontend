@@ -153,6 +153,50 @@ function App() {
   const SEPOLIA_CHAIN_ID = '0xaa36a7'; // all lowercase, no leading zeros
   const [wrongNetwork, setWrongNetwork] = useState(false);
 
+  const handleConnectWallet = useCallback(async () => {
+    if (!window.ethereum) {
+      setError("MetaMask is not installed. Please install MetaMask and try again.");
+      return;
+    }
+    setConnecting(true);
+    try {
+      // Request accounts and set up listeners
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      const signer = provider.getSigner();
+      const address = await signer.getAddress();
+      
+      // Set up account change listener
+      window.ethereum.on('accountsChanged', async (accounts: string[]) => {
+        if (accounts.length === 0) {
+          // User disconnected wallet
+          setProvider(null);
+          setAccount(null);
+          setGameState({
+            playersJoined: 0,
+            player1: null,
+            player2: null,
+            myUnit: null,
+            opponentUnit: null,
+            lastCombatOutcome: null
+          });
+        } else {
+          // New account connected
+          const newProvider = new ethers.providers.Web3Provider(window.ethereum);
+          setProvider(newProvider);
+          setAccount(accounts[0]);
+        }
+      });
+
+      setProvider(provider);
+      setAccount(address);
+      setConnecting(false);
+    } catch (err) {
+      setError(((err as Error)?.message) || "Failed to connect to MetaMask");
+      setConnecting(false);
+    }
+  }, []);
+
   const fetchGameState = useCallback(async () => {
     if (!contract || !account) return;
     
@@ -182,12 +226,12 @@ function App() {
       }
       
       // Get the game code for the current player
-      const playerGameCode = await contract.playerGameCode(account);
+      const playerGameCode = await contract.playerGameCode(account, { cache: "no-store" });
       console.log("📋 Player game code:", playerGameCode);
       
       if (playerGameCode && playerGameCode !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
         // Player is in a game, get game details
-        const gameInfo = await contract.getGame(playerGameCode);
+        const gameInfo = await contract.getGame(playerGameCode, { cache: "no-store" });
         const [creator, player2] = gameInfo;
         console.log("🎮 Game info - Creator:", creator, "Player2:", player2);
         
@@ -199,7 +243,7 @@ function App() {
         // Handle lastCombatOutcome with proper null checking
         let lastCombatOutcome: number | null = null;
         try {
-          const outcome = await contract.lastCombatOutcome();
+          const outcome = await contract.lastCombatOutcome({ cache: "no-store" });
           lastCombatOutcome = outcome && typeof outcome.toNumber === 'function' ? outcome.toNumber() : null;
         } catch (err) {
           console.log("lastCombatOutcome not available yet:", err);
@@ -255,7 +299,7 @@ function App() {
         setError("Failed to fetch game state");
       }
     }
-  }, [contract, account, provider, setAccount, setGameState, setToast, setCombatLog, setError]);
+  }, [contract, account, provider, setAccount, setGameState, setToast, setCombatLog, setError, handleConnectWallet]);
 
   // Detect network and handle account changes
   useEffect(() => {
@@ -666,54 +710,6 @@ function App() {
 
   // Check if current user has joined
   const hasJoined = Boolean(account && gameState.playersJoined > 0);
-
-  async function handleConnectWallet() {
-    if (!window.ethereum) {
-      setError("MetaMask is not installed. Please install MetaMask and try again.");
-      return;
-    }
-    setConnecting(true);
-    try {
-      // Request accounts and set up listeners
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      await provider.send("eth_requestAccounts", []);
-      const signer = provider.getSigner();
-      const address = await signer.getAddress();
-      
-      // Set up account change listener
-      window.ethereum.on('accountsChanged', async (accounts: string[]) => {
-        if (accounts.length === 0) {
-          // User disconnected wallet
-          setProvider(null);
-          setAccount(null);
-          setGameState({
-            playersJoined: 0,
-            player1: null,
-            player2: null,
-            myUnit: null,
-            opponentUnit: null,
-            lastCombatOutcome: null
-          });
-        } else {
-          // New account connected
-          const newProvider = new ethers.providers.Web3Provider(window.ethereum);
-          setProvider(newProvider);
-          setAccount(accounts[0]);
-          // Force refresh game state
-          await fetchGameState();
-        }
-      });
-
-      setProvider(provider);
-      setAccount(address);
-      // Initial game state fetch
-      await fetchGameState();
-      setConnecting(false);
-    } catch (err) {
-      setError(((err as Error)?.message) || "Failed to connect to MetaMask");
-      setConnecting(false);
-    }
-  }
 
   // Get current action button
   function getActionButton() {
