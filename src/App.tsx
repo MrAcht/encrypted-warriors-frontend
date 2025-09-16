@@ -5,10 +5,10 @@ import { UnitForm } from "./components/UnitForm";
 import { CombatLog } from "./components/CombatLog";
 import { EnhancedLoader } from "./components/EnhancedLoader";
 import { Achievements } from "./components/Achievements";
-import { AnimatedBackground, FloatingIcons } from "./components/AnimatedBackground";
 import { useContract } from "./hooks/useContract";
 import { CONTRACT_ADDRESS } from "./config";
 import { OnboardingModal } from "./components/OnboardingModal";
+import { Stepper } from "./components/Stepper";
 import { FaQuestionCircle, FaPlus, FaWallet, FaSignOutAlt, FaExchangeAlt, FaEllipsisH, FaTrophy, FaCrown, FaMagic, FaShieldAlt, FaEye, FaDragon } from "react-icons/fa";
 import { QRCodeCanvas } from "qrcode.react";
 
@@ -58,7 +58,6 @@ function App() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
 
-  // Re-add missing state and refs
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const walletMenuRef = useRef<HTMLDivElement>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -66,10 +65,7 @@ function App() {
   const [connecting, setConnecting] = useState(false);
   const [createdGameCode, setCreatedGameCode] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState<string>("");
-  // Add a ref for the join code input
   const joinCodeInputRef = useRef<HTMLInputElement>(null);
-
-  // Mock achievements and leaderboard data
   const [achievements] = useState([
     {
       id: "first_win",
@@ -154,17 +150,52 @@ function App() {
 
   const contract = useContract(provider, contractAddress);
 
+  // Memoize fetchGameState to avoid dependency issues
+  const memoizedFetchGameState = useCallback(async () => {
+    if (!contract || !account) return;
+    await fetchGameState();
+  }, [contract, account, fetchGameState]);
+
   const SEPOLIA_CHAIN_ID = '0xaa36a7'; // all lowercase, no leading zeros
   const [wrongNetwork, setWrongNetwork] = useState(false);
 
-  // Detect network
+  
+  // Memoize fetchGameState to avoid dependency issues
+
+
+  // Detect network and handle account changes
   useEffect(() => {
     async function checkNetwork() {
       if (window.ethereum) {
         const chainId = (await window.ethereum.request({ method: 'eth_chainId' })).toLowerCase();
         setWrongNetwork(chainId !== SEPOLIA_CHAIN_ID);
+        
+        // Listen for network changes
         window.ethereum.on('chainChanged', (id: string) => {
           setWrongNetwork(id.toLowerCase() !== SEPOLIA_CHAIN_ID);
+        });
+
+        // Listen for account changes
+        window.ethereum.on('accountsChanged', async (accounts: string[]) => {
+          if (accounts.length === 0) {
+            // User disconnected their wallet
+            setProvider(null);
+            setAccount(null);
+            setGameState({
+              playersJoined: 0,
+              player1: null,
+              player2: null,
+              myUnit: null,
+              opponentUnit: null,
+              lastCombatOutcome: null
+            });
+          } else {
+            // Account changed, update state and refetch game state
+            const provider = new ethers.providers.Web3Provider(window.ethereum);
+            setProvider(provider);
+            setAccount(accounts[0]);
+            await memoizedFetchGameState();
+          }
         });
       }
     }
@@ -172,9 +203,10 @@ function App() {
     return () => {
       if (window.ethereum && window.ethereum.removeListener) {
         window.ethereum.removeListener('chainChanged', () => {});
+        window.ethereum.removeListener('accountsChanged', () => {});
       }
     };
-  }, []);
+  }, [memoizedFetchGameState]);
 
   async function switchToSepolia() {
     if (!window.ethereum) return;
@@ -329,17 +361,43 @@ function App() {
     }
   }
 
-  // Memoize fetchGameState to avoid dependency issues
-  const memoizedFetchGameState = useCallback(fetchGameState, [contract, account]);
-
   // This effect derives the current UI step from the game state
   useEffect(() => {
-    if (gameState.playersJoined >= 2) {
-      setCurrentStep(gameState.myUnit?.deployed ? 2 : 1);
-    } else {
+    if (!account) {
       setCurrentStep(0);
+      return;
     }
-  }, [gameState.playersJoined, gameState.myUnit]);
+
+    // If you're not in a game yet
+    if (gameState.playersJoined === 0) {
+      setCurrentStep(0);
+      return;
+    }
+
+    // If you're in a game with one player (waiting for second player)
+    if (gameState.playersJoined === 1) {
+      setCurrentStep(0);
+      return;
+    }
+
+    // If two players have joined but units aren't deployed
+    if (gameState.playersJoined === 2 && !gameState.myUnit?.deployed) {
+      setCurrentStep(1);
+      return;
+    }
+
+    // If units are deployed but no combat has occurred
+    if (gameState.myUnit?.deployed && gameState.lastCombatOutcome === null) {
+      setCurrentStep(2);
+      return;
+    }
+
+    // If combat has occurred
+    if (gameState.lastCombatOutcome !== null) {
+      setCurrentStep(3);
+      return;
+    }
+  }, [gameState.playersJoined, gameState.myUnit, gameState.lastCombatOutcome, account]);
 
   // Fetch game state on mount and when contract/account changes
   useEffect(() => {
@@ -351,22 +409,7 @@ function App() {
     }
   }, [memoizedFetchGameState, contract, account]);
 
-  // Poll for game state updates
-  useEffect(() => {
-    if (!contract || !account) return;
-    
-    try {
-      const interval = setInterval(() => {
-        console.log("⏰ Polling for game state updates...");
-        memoizedFetchGameState();
-      }, 3000); // Poll every 3 seconds (more frequent)
-      
-      return () => clearInterval(interval);
-    } catch (err) {
-      console.error("Error setting up polling:", err);
-      setError("Failed to set up game state polling");
-    }
-  }, [memoizedFetchGameState, contract, account]);
+  // Add manual refresh functionality instead of polling
 
   // Clear error when component unmounts or when error is handled
   useEffect(() => {
@@ -498,24 +541,71 @@ function App() {
 
   // Deploy a new EncryptedWarriors contract
   async function createNewGame() {
-    if (!contract) return;
+    console.log("Starting createNewGame...");
+    if (!contract) {
+      console.error("Contract not initialized");
+      showTxToast('failed', undefined, "Contract not initialized. Please check your wallet connection.");
+      return;
+    }
+    if (!provider) {
+      console.error("Provider not available");
+      showTxToast('failed', undefined, "Web3 provider not available. Please check your wallet connection.");
+      return;
+    }
+    
     setLoading(true);
     try {
-      // Debug: log contract functions and ABI
-      console.log("Contract functions:", contract && Object.keys(contract));
-      console.log("ABI:", contract && contract.interface && contract.interface.fragments.map(f => f.name));
+      console.log("Checking network connection...");
+      // Verify network connection
+      try {
+        await provider.getNetwork();
+      } catch (networkErr) {
+        console.error("Network check failed:", networkErr);
+        throw new Error("Network connection failed. Please check your internet connection and wallet network.");
+      }
+      
+      // Reset game state before creating new game
+      console.log("Resetting game state...");
+      setGameState({
+        playersJoined: 0,
+        player1: null,
+        player2: null,
+        myUnit: null,
+        opponentUnit: null,
+        lastCombatOutcome: null
+      });
+      setCurrentStep(0);
+      
+      console.log("Calling contract.createGame()...");
       const tx = await contract.createGame();
+      console.log("Transaction initiated:", tx.hash);
       showTxToast('pending', tx.hash);
+      
+      console.log("Waiting for transaction confirmation...");
       const receipt = await tx.wait();
+      console.log("Transaction confirmed:", receipt);
+      
       // Get the code from the event
       const event = receipt.events && receipt.events.find((e: any) => e.event === 'GameCreated');
       const code = event?.args?.code;
+      console.log("Game created with code:", code);
+      
       setCreatedGameCode(code);
       showTxToast('confirmed', tx.hash, undefined, `🎉 <b>Game created!</b> <br/>Game Code: <b>${code}</b>`);
       setCombatLog((prev: string[]) => [...prev, `New game created! Game Code: ${code}`]);
+      
+      // Force an immediate state refresh
+      console.log("Refreshing game state...");
       await memoizedFetchGameState();
     } catch (err: any) {
-      showTxToast('failed', undefined, err?.message || String(err));
+      console.error("Create game error:", err);
+      let errorMessage = err?.message || String(err);
+      if (errorMessage.includes("Failed to fetch")) {
+        errorMessage = "Network connection error. Please check your internet connection and wallet network.";
+      } else if (errorMessage.includes("user rejected")) {
+        errorMessage = "Transaction was rejected by the user.";
+      }
+      showTxToast('failed', undefined, errorMessage);
     }
     setLoading(false);
   }
@@ -566,29 +656,7 @@ function App() {
     setLoading(false);
   }
 
-  // Stepper UI
-  function Stepper() {
-    return (
-      <div className="flex justify-center gap-4 mb-8">
-        {steps.map((step, idx) => (
-          <div key={step} className="flex flex-col items-center">
-            <div
-              className={`rounded-full w-10 h-10 flex items-center justify-center text-lg font-bold border-2 transition-all duration-300 ${
-                idx === currentStep
-                  ? "bg-gradient-to-br from-yellow-400 to-yellow-600 text-gray-900 border-yellow-400 shadow-lg scale-110"
-                  : idx < currentStep
-                  ? "bg-green-500 text-white border-green-400"
-                  : "bg-gray-700 text-gray-400 border-gray-600"
-              }`}
-            >
-              {idx + 1}
-            </div>
-            <span className={`mt-2 text-xs font-semibold ${idx === currentStep ? "text-yellow-300" : "text-gray-400"}`}>{step}</span>
-          </div>
-        ))}
-      </div>
-    );
-  }
+  // Import Stepper from the new component
 
   // Check if current user has joined
   const hasJoined = Boolean(account && gameState.playersJoined > 0);
@@ -600,12 +668,40 @@ function App() {
     }
     setConnecting(true);
     try {
+      // Request accounts and set up listeners
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       await provider.send("eth_requestAccounts", []);
       const signer = provider.getSigner();
       const address = await signer.getAddress();
+      
+      // Set up account change listener
+      window.ethereum.on('accountsChanged', async (accounts: string[]) => {
+        if (accounts.length === 0) {
+          // User disconnected wallet
+          setProvider(null);
+          setAccount(null);
+          setGameState({
+            playersJoined: 0,
+            player1: null,
+            player2: null,
+            myUnit: null,
+            opponentUnit: null,
+            lastCombatOutcome: null
+          });
+        } else {
+          // New account connected
+          const newProvider = new ethers.providers.Web3Provider(window.ethereum);
+          setProvider(newProvider);
+          setAccount(accounts[0]);
+          // Force refresh game state
+          await fetchGameState();
+        }
+      });
+
       setProvider(provider);
       setAccount(address);
+      // Initial game state fetch
+      await fetchGameState();
       setConnecting(false);
     } catch (err) {
       setError(((err as Error)?.message) || "Failed to connect to MetaMask");
@@ -669,37 +765,48 @@ function App() {
                 <button
                   onClick={async () => {
                     console.log("🔄 Manual refresh triggered");
-                    // Force a fresh fetch by clearing any potential caching
                     if (contract && account) {
                       try {
-                        // Clear any cached values and force fresh contract calls
+                        setLoading(true);
                         await memoizedFetchGameState();
-                        setToast("Game state refreshed!");
+                        setToast("✅ Game state refreshed!");
                       } catch (err) {
                         console.error("Manual refresh failed:", err);
-                        setToast("Refresh failed. Please try again.");
+                        setToast("❌ Refresh failed. Please try again.");
+                      } finally {
+                        setLoading(false);
                       }
+                    } else {
+                      setToast("Please connect your wallet first");
                     }
                   }}
-                  className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1 rounded transition-colors"
+                  className="flex-1 transition-all duration-200 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white py-2 px-4 rounded-lg shadow-lg font-semibold flex items-center justify-center gap-2"
                 >
-                  🔄 Refresh Game State
+                  <span className="animate-spin-slow">🔄</span> Refresh Game State
                 </button>
                 <button
                   onClick={async () => {
                     console.log("🔌 Manual reconnect triggered");
                     try {
+                      setLoading(true);
                       await handleConnectWallet();
-                      setToast("Wallet reconnected!");
+                      setToast("✅ Wallet reconnected!");
                     } catch (err) {
                       console.error("Manual reconnect failed:", err);
-                      setToast("Reconnect failed. Please try again.");
+                      setToast("❌ Reconnect failed. Please try again.");
+                    } finally {
+                      setLoading(false);
                     }
                   }}
-                  className="text-xs bg-blue-700 hover:bg-blue-600 text-gray-300 px-3 py-1 rounded transition-colors"
+                  className="flex-1 transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white py-2 px-4 rounded-lg shadow-lg font-semibold flex items-center justify-center gap-2"
                 >
                   🔌 Reconnect Wallet
                 </button>
+              </div>
+              
+              {/* Add helper text to inform users about manual refresh */}
+              <div className="mt-2 text-xs text-gray-400 text-center">
+                Click "Refresh Game State" to update the game status manually
               </div>
             </div>
             {/* Replace the main Join Game button with two options if not joined and game not full */}
@@ -798,10 +905,6 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-700 text-white font-sans">
-      {/* Animated Background */}
-      <AnimatedBackground />
-      <FloatingIcons />
-      
       {/* Network warning banner */}
       {wrongNetwork && (
         <div className="fixed top-0 left-0 w-full z-50 bg-red-700 text-white flex items-center justify-center gap-4 py-3 px-4 font-semibold shadow-lg animate-fade-in">
@@ -814,22 +917,9 @@ function App() {
           </button>
         </div>
       )}
-      {/* Animated Gradient Background */}
-      <div className="fixed inset-0 -z-10">
-        <svg width="100%" height="100%" className="absolute inset-0 w-full h-full">
-          <defs>
-            <radialGradient id="bg-gradient" cx="50%" cy="50%" r="80%">
-              <stop offset="0%" stopColor="#facc15" stopOpacity="0.08" />
-              <stop offset="50%" stopColor="#6366f1" stopOpacity="0.10" />
-              <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.08" />
-            </radialGradient>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#bg-gradient)" />
-        </svg>
-        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-gray-900/90 via-gray-900/80 to-gray-900/95 transition-colors duration-700" />
-      </div>
+      <div className="fixed inset-0 -z-10 bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800" />
       {/* Glassy, Gradient Header */}
-      <header className={`sticky top-0 z-40 flex flex-col sm:flex-row items-center justify-between px-4 sm:px-8 py-4 sm:py-5 bg-gray-900/80 backdrop-blur-2xl border-b-2 border-yellow-400/30 shadow-2xl rounded-b-3xl transition-all duration-700 ${wrongNetwork ? 'mt-16' : ''}`}>
+      <header className={`sticky top-0 z-40 flex flex-col sm:flex-row items-center justify-between px-4 sm:px-8 py-4 sm:py-5 bg-gray-900/80 border-b-2 border-yellow-400/30 shadow-2xl rounded-b-3xl ${wrongNetwork ? 'mt-16' : ''}`}>
         <div className="flex items-center gap-3 sm:gap-5 mb-3 sm:mb-0">
           <img src="/logo192.png" alt="Logo" className="w-12 h-12 sm:w-14 sm:h-14 drop-shadow-lg rounded-2xl border-2 border-yellow-400/60" />
           <span className="text-2xl sm:text-3xl font-extrabold tracking-wider bg-gradient-to-r from-yellow-400 via-purple-400 to-blue-400 bg-clip-text text-transparent drop-shadow-lg">Encrypted Warriors</span>
@@ -866,7 +956,7 @@ function App() {
               <FaEllipsisH className="w-5 h-5" />
             </button>
             {moreMenuOpen && (
-              <div className="absolute right-0 mt-2 w-64 max-w-xs bg-gray-800 rounded-xl shadow-2xl border border-gray-700 z-50 animate-fade-in p-0">
+              <div className="absolute right-0 mt-2 w-64 max-w-xs bg-gray-800 rounded-xl shadow-2xl border border-gray-700 z-50 p-0">
                 <button
                   onClick={() => {
                     createNewGame();
@@ -909,6 +999,7 @@ function App() {
             )}
           </div>
           {/* Right-aligned wallet pill menu */}
+
           <div className="relative w-full sm:w-auto ml-0 sm:ml-2" ref={walletMenuRef}>
             {!account ? (
               <button
@@ -932,7 +1023,7 @@ function App() {
                   <FaWallet className="w-5 h-5" /> {account.slice(0, 6)}...{account.slice(-3)} <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                 </button>
                 {walletMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-56 max-w-xs bg-gray-800 rounded-xl shadow-2xl border border-gray-700 z-50 animate-fade-in">
+                  <div className="absolute right-0 mt-2 w-56 max-w-xs bg-gray-800 rounded-xl shadow-2xl border border-gray-700 z-50">
                     <button
                       onClick={() => {
                         setProvider(null);
@@ -972,9 +1063,9 @@ function App() {
         </div>
       </header>
       {/* Main Content Card */}
-      <main className="max-w-3xl mx-auto mt-12 p-10 bg-gray-900/90 rounded-3xl shadow-2xl border border-yellow-400/30 relative backdrop-blur-xl transition-all duration-700">
+      <main className="max-w-3xl mx-auto mt-12 p-10 bg-gray-900/90 rounded-3xl shadow-2xl border border-yellow-400/30 relative">
         {/* Game Progress Stepper */}
-        <Stepper />
+        <Stepper steps={steps} currentStep={currentStep} />
         {/* Game Flow Banners */}
         <div className="mb-6">
           {currentStep === 0 && (
@@ -1016,7 +1107,7 @@ function App() {
           {getActionButton()}
           {/* Game Code Box with QR and Copied feedback */}
           {createdGameCode && (
-            <div className="my-4 p-4 bg-blue-900/80 rounded-xl text-center shadow-lg border border-blue-400 animate-fade-in relative">
+            <div className="my-4 p-4 bg-blue-900/80 rounded-xl text-center shadow-lg border border-blue-400 relative">
               <div className="font-bold text-lg text-blue-200 mb-2 flex items-center justify-center gap-2">
                 <span>Share this Game Code:</span>
                 <QRCodeCanvas value={createdGameCode} size={48} bgColor="#1e293b" fgColor="#facc15" />
