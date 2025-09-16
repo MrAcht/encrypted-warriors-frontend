@@ -467,6 +467,18 @@ function App() {
   }, [contract, fetchGameState]);
 
   // Add manual refresh functionality instead of polling
+  const handleManualRefresh = async () => {
+    setLoading(true);
+    try {
+      await fetchGameState();
+      setToast("Game state refreshed successfully!");
+    } catch (err) {
+      console.error("Error refreshing game state:", err);
+      setError("Failed to refresh game state");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Clear error when component unmounts or when error is handled
   useEffect(() => {
