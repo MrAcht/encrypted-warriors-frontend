@@ -226,23 +226,31 @@ function App() {
         return;
       }
       
-      // Get the game code for the current player
-      let playerGameCode = await contract.playerGameCode(account);
-      if (playerGameCode === "0x0000000000000000000000000000000000000000000000000000000000000000") {
-        const storedGameCode = localStorage.getItem("gameCode");
-        if (storedGameCode) {
-          playerGameCode = storedGameCode;
-        }
-      }
-      console.log("📋 Player game code:", playerGameCode);
+      // Get the game code from local storage, as playerGameCode mapping is not reliable for joining.
+      const storedGameCode = localStorage.getItem("gameCode");
+      console.log("📋 Stored game code:", storedGameCode);
       
-      if (playerGameCode && playerGameCode !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
-        // Player is in a game, get game details
-        const gameInfo = await contract.getGame(playerGameCode);
+      if (storedGameCode && storedGameCode !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
+        // A game code is stored, let's see if it's a valid game
+        const gameInfo = await contract.getGame(storedGameCode);
         const [creator, player2] = gameInfo;
         console.log("🎮 Game info - Creator:", creator, "Player2:", player2);
+
+        // Check if the current player is part of this game
+        if (creator.toLowerCase() !== account.toLowerCase() && player2.toLowerCase() !== account.toLowerCase()) {
+          console.log("❌ Player is not part of the stored game, resetting state");
+          localStorage.removeItem("gameCode"); // Clear invalid game code
+          setGameState({
+            playersJoined: 0,
+            player1: null,
+            player2: null,
+            myUnit: null,
+            opponentUnit: null,
+            lastCombatOutcome: null
+          });
+          return; // Exit if not part of the game
+        }
         
-        // Check if both players have joined
         // The creator is always set when game is created, so we only need to check if player2 is set
         const playersJoined = player2 !== "0x0000000000000000000000000000000000000000" ? 2 : 1;
         console.log("👥 Players joined:", playersJoined);
@@ -277,7 +285,7 @@ function App() {
           return newState;
         });
       } else {
-        console.log("❌ Player not in any game, resetting state");
+        console.log("❌ No game code found, resetting state");
         // Player is not in any game, reset state
         setGameState({
           playersJoined: 0,
@@ -786,31 +794,10 @@ function App() {
               
               <div className="flex gap-2 mt-3">
                 <button
-                  onClick={async () => {
-                    console.log("🔄 Manual refresh triggered");
-                    setAppKey(Math.random());
-                  }}
-                  className="flex-1 transition-all duration-200 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white py-2 px-4 rounded-lg shadow-lg font-semibold flex items-center justify-center gap-2"
-                >
-                  <span className="animate-spin-slow">🔄</span> Refresh Game State
-                </button>
-                <button
-                  onClick={async () => {
-                    console.log("🔌 Manual reconnect triggered");
-                    try {
-                      setLoading(true);
-                      await handleConnectWallet();
-                      setToast("✅ Wallet reconnected!");
-                    } catch (err) {
-                      console.error("Manual reconnect failed:", err);
-                      setToast("❌ Reconnect failed. Please try again.");
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
+                  onClick={handleManualRefresh}
                   className="flex-1 transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white py-2 px-4 rounded-lg shadow-lg font-semibold flex items-center justify-center gap-2"
                 >
-                  🔌 Reconnect Wallet
+                  <span className={loading ? "animate-spin" : ""}>🔄</span> Refresh
                 </button>
               </div>
               
