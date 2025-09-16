@@ -400,7 +400,6 @@ function App() {
   }, [gameState.playersJoined, gameState.myUnit, gameState.lastCombatOutcome, account]);
 
   // Fetch game state on mount and when contract/account changes
-  """  // Fetch game state on mount and when contract/account changes
   useEffect(() => {
     try {
       memoizedFetchGameState();
@@ -425,7 +424,7 @@ function App() {
     return () => {
       contract.off("PlayerJoined", handlePlayerJoined);
     };
-  }, [contract, memoizedFetchGameState]);""
+  }, [contract, memoizedFetchGameState]);
 
   // Add manual refresh functionality instead of polling
 
