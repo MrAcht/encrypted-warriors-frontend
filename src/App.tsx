@@ -47,6 +47,7 @@ function App() {
   });
   const [combatLog, setCombatLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [refreshNonce, setRefreshNonce] = useState(0);
   
   // Add contract address state
   const [contractAddress, setContractAddress] = useState<string>(CONTRACT_ADDRESS);
@@ -226,12 +227,12 @@ function App() {
       }
       
       // Get the game code for the current player
-      const playerGameCode = await contract.playerGameCode(account, { cache: "no-store" });
+      const playerGameCode = await contract.playerGameCode(account);
       console.log("📋 Player game code:", playerGameCode);
       
       if (playerGameCode && playerGameCode !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
         // Player is in a game, get game details
-        const gameInfo = await contract.getGame(playerGameCode, { cache: "no-store" });
+        const gameInfo = await contract.getGame(playerGameCode);
         const [creator, player2] = gameInfo;
         console.log("🎮 Game info - Creator:", creator, "Player2:", player2);
         
@@ -243,7 +244,7 @@ function App() {
         // Handle lastCombatOutcome with proper null checking
         let lastCombatOutcome: number | null = null;
         try {
-          const outcome = await contract.lastCombatOutcome({ cache: "no-store" });
+          const outcome = await contract.lastCombatOutcome();
           lastCombatOutcome = outcome && typeof outcome.toNumber === 'function' ? outcome.toNumber() : null;
         } catch (err) {
           console.log("lastCombatOutcome not available yet:", err);
@@ -440,7 +441,7 @@ function App() {
       console.error("Error in fetchGameState effect:", err);
       setError("Failed to initialize game state");
     }
-  }, [fetchGameState, contract, account]);
+  }, [fetchGameState, contract, account, refreshNonce]);
 
   // Listen for PlayerJoined event
   useEffect(() => {
@@ -767,20 +768,7 @@ function App() {
                 <button
                   onClick={async () => {
                     console.log("🔄 Manual refresh triggered");
-                    if (contract && account) {
-                      try {
-                        setLoading(true);
-                        await fetchGameState();
-                        setToast("✅ Game state refreshed!");
-                      } catch (err) {
-                        console.error("Manual refresh failed:", err);
-                        setToast("❌ Refresh failed. Please try again.");
-                      } finally {
-                        setLoading(false);
-                      }
-                    } else {
-                      setToast("Please connect your wallet first");
-                    }
+                    setRefreshNonce(Math.random());
                   }}
                   className="flex-1 transition-all duration-200 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white py-2 px-4 rounded-lg shadow-lg font-semibold flex items-center justify-center gap-2"
                 >
