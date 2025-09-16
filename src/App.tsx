@@ -150,114 +150,10 @@ function App() {
 
   const contract = useContract(provider, contractAddress);
 
-  // Memoize fetchGameState to avoid dependency issues
-  const memoizedFetchGameState = useCallback(async () => {
-    if (!contract || !account) return;
-    await fetchGameState();
-  }, [contract, account, fetchGameState]);
-
   const SEPOLIA_CHAIN_ID = '0xaa36a7'; // all lowercase, no leading zeros
   const [wrongNetwork, setWrongNetwork] = useState(false);
 
-  
-  // Memoize fetchGameState to avoid dependency issues
-
-
-  // Detect network and handle account changes
-  useEffect(() => {
-    async function checkNetwork() {
-      if (window.ethereum) {
-        const chainId = (await window.ethereum.request({ method: 'eth_chainId' })).toLowerCase();
-        setWrongNetwork(chainId !== SEPOLIA_CHAIN_ID);
-        
-        // Listen for network changes
-        window.ethereum.on('chainChanged', (id: string) => {
-          setWrongNetwork(id.toLowerCase() !== SEPOLIA_CHAIN_ID);
-        });
-
-        // Listen for account changes
-        window.ethereum.on('accountsChanged', async (accounts: string[]) => {
-          if (accounts.length === 0) {
-            // User disconnected their wallet
-            setProvider(null);
-            setAccount(null);
-            setGameState({
-              playersJoined: 0,
-              player1: null,
-              player2: null,
-              myUnit: null,
-              opponentUnit: null,
-              lastCombatOutcome: null
-            });
-          } else {
-            // Account changed, update state and refetch game state
-            const provider = new ethers.providers.Web3Provider(window.ethereum);
-            setProvider(provider);
-            setAccount(accounts[0]);
-            await memoizedFetchGameState();
-          }
-        });
-      }
-    }
-    checkNetwork();
-    return () => {
-      if (window.ethereum && window.ethereum.removeListener) {
-        window.ethereum.removeListener('chainChanged', () => {});
-        window.ethereum.removeListener('accountsChanged', () => {});
-      }
-    };
-  }, [memoizedFetchGameState]);
-
-  async function switchToSepolia() {
-    if (!window.ethereum) return;
-    try {
-      await window.ethereum.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: SEPOLIA_CHAIN_ID }],
-      });
-    } catch (switchError: any) {
-      if (switchError.code === 4902) {
-        // Chain not added to MetaMask
-        await window.ethereum.request({
-          method: 'wallet_addEthereumChain',
-          params: [{
-            chainId: SEPOLIA_CHAIN_ID,
-            chainName: 'Sepolia',
-            rpcUrls: ['https://rpc.sepolia.org'],
-            nativeCurrency: { name: 'SepoliaETH', symbol: 'ETH', decimals: 18 },
-            blockExplorerUrls: ['https://sepolia.etherscan.io'],
-          }],
-        });
-      } else {
-        setError('Failed to switch network: ' + (switchError.message || switchError));
-      }
-    }
-  }
-
-  // Close wallet menu on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (walletMenuRef.current && !walletMenuRef.current.contains(e.target as Node)) {
-        setWalletMenuOpen(false);
-      }
-    }
-    if (walletMenuOpen) document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [walletMenuOpen]);
-
-  // Close more menu on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
-        setMoreMenuOpen(false);
-      }
-    }
-    if (moreMenuOpen) document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [moreMenuOpen]);
-
-  // Fetch game state
-  async function fetchGameState() {
+  const fetchGameState = useCallback(async () => {
     if (!contract || !account) return;
     
     try {
@@ -359,7 +255,100 @@ function App() {
         setError("Failed to fetch game state");
       }
     }
+  }, [contract, account, provider, setAccount, setGameState, setToast, setCombatLog, setError]);
+
+  // Detect network and handle account changes
+  useEffect(() => {
+    async function checkNetwork() {
+      if (window.ethereum) {
+        const chainId = (await window.ethereum.request({ method: 'eth_chainId' })).toLowerCase();
+        setWrongNetwork(chainId !== SEPOLIA_CHAIN_ID);
+        
+        // Listen for network changes
+        window.ethereum.on('chainChanged', (id: string) => {
+          setWrongNetwork(id.toLowerCase() !== SEPOLIA_CHAIN_ID);
+        });
+
+        // Listen for account changes
+        window.ethereum.on('accountsChanged', async (accounts: string[]) => {
+          if (accounts.length === 0) {
+            // User disconnected their wallet
+            setProvider(null);
+            setAccount(null);
+            setGameState({
+              playersJoined: 0,
+              player1: null,
+              player2: null,
+              myUnit: null,
+              opponentUnit: null,
+              lastCombatOutcome: null
+            });
+          } else {
+            // Account changed, update state and refetch game state
+            const provider = new ethers.providers.Web3Provider(window.ethereum);
+            setProvider(provider);
+            setAccount(accounts[0]);
+            await fetchGameState();
+          }
+        });
+      }
+    }
+    checkNetwork();
+    return () => {
+      if (window.ethereum && window.ethereum.removeListener) {
+        window.ethereum.removeListener('chainChanged', () => {});
+        window.ethereum.removeListener('accountsChanged', () => {});
+      }
+    };
+  }, [fetchGameState]);
+
+  async function switchToSepolia() {
+    if (!window.ethereum) return;
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: SEPOLIA_CHAIN_ID }],
+      });
+    } catch (switchError: any) {
+      if (switchError.code === 4902) {
+        // Chain not added to MetaMask
+        await window.ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId: SEPOLIA_CHAIN_ID,
+            chainName: 'Sepolia',
+            rpcUrls: ['https://rpc.sepolia.org'],
+            nativeCurrency: { name: 'SepoliaETH', symbol: 'ETH', decimals: 18 },
+            blockExplorerUrls: ['https://sepolia.etherscan.io'],
+          }],
+        });
+      } else {
+        setError('Failed to switch network: ' + (switchError.message || switchError));
+      }
+    }
   }
+
+  // Close wallet menu on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (walletMenuRef.current && !walletMenuRef.current.contains(e.target as Node)) {
+        setWalletMenuOpen(false);
+      }
+    }
+    if (walletMenuOpen) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [walletMenuOpen]);
+
+  // Close more menu on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    }
+    if (moreMenuOpen) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [moreMenuOpen]);
 
   // This effect derives the current UI step from the game state
   useEffect(() => {
@@ -402,12 +391,12 @@ function App() {
   // Fetch game state on mount and when contract/account changes
   useEffect(() => {
     try {
-      memoizedFetchGameState();
+      fetchGameState();
     } catch (err) {
       console.error("Error in fetchGameState effect:", err);
       setError("Failed to initialize game state");
     }
-  }, [memoizedFetchGameState, contract, account]);
+  }, [fetchGameState, contract, account]);
 
   // Listen for PlayerJoined event
   useEffect(() => {
@@ -416,7 +405,7 @@ function App() {
     const handlePlayerJoined = (gameCode: string, player: string) => {
       console.log("PlayerJoined event received:", { gameCode, player });
       setToast(`A player has joined the game!`);
-      memoizedFetchGameState();
+      fetchGameState();
     };
 
     contract.on("PlayerJoined", handlePlayerJoined);
@@ -424,7 +413,7 @@ function App() {
     return () => {
       contract.off("PlayerJoined", handlePlayerJoined);
     };
-  }, [contract, memoizedFetchGameState]);
+  }, [contract, fetchGameState]);
 
   // Add manual refresh functionality instead of polling
 
@@ -527,7 +516,7 @@ function App() {
       setToast("Attack completed! Combat results are encrypted.");
       setCombatLog((prev: string[]) => [...prev, `You attacked ${defender.slice(0, 6)}...${defender.slice(-4)}`]);
       setCurrentStep(3);
-      await memoizedFetchGameState();
+      await fetchGameState();
     } catch (err: any) {
       showTxToast('failed', undefined, err?.message || String(err));
     }
@@ -549,7 +538,7 @@ function App() {
       showTxToast('confirmed', tx.hash);
       setToast("Combat outcome revealed!");
       setCombatLog((prev: string[]) => [...prev, "Combat outcome: Attacker wins!"]);
-      await memoizedFetchGameState();
+      await fetchGameState();
     } catch (err: any) {
       showTxToast('failed', undefined, err?.message || String(err));
     }
@@ -613,7 +602,7 @@ function App() {
       
       // Force an immediate state refresh
       console.log("Refreshing game state...");
-      await memoizedFetchGameState();
+      await fetchGameState();
     } catch (err: any) {
       console.error("Create game error:", err);
       let errorMessage = err?.message || String(err);
@@ -659,7 +648,7 @@ function App() {
       await tx.wait();
       showTxToast('confirmed', tx.hash, undefined, "Successfully joined the game!");
       setCombatLog((prev: string[]) => [...prev, `Joined game with code: ${cleanCode}`]);
-      await memoizedFetchGameState();
+      await fetchGameState();
     } catch (err) {
       // Improved error handling for 'Creator cannot join their own game'
       const message = (err as any)?.message || String(err);
@@ -785,7 +774,7 @@ function App() {
                     if (contract && account) {
                       try {
                         setLoading(true);
-                        await memoizedFetchGameState();
+                        await fetchGameState();
                         setToast("✅ Game state refreshed!");
                       } catch (err) {
                         console.error("Manual refresh failed:", err);
