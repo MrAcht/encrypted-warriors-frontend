@@ -227,7 +227,13 @@ function App() {
       }
       
       // Get the game code for the current player
-      const playerGameCode = await contract.playerGameCode(account);
+      let playerGameCode = await contract.playerGameCode(account);
+      if (playerGameCode === "0x0000000000000000000000000000000000000000000000000000000000000000") {
+        const storedGameCode = localStorage.getItem("gameCode");
+        if (storedGameCode) {
+          playerGameCode = storedGameCode;
+        }
+      }
       console.log("📋 Player game code:", playerGameCode);
       
       if (playerGameCode && playerGameCode !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
@@ -641,6 +647,7 @@ function App() {
       const code = event?.args?.code;
       console.log("Game created with code:", code);
       
+      localStorage.setItem("gameCode", code);
       setCreatedGameCode(code);
       showTxToast('confirmed', tx.hash, undefined, `🎉 <b>Game created!</b> <br/>Game Code: <b>${code}</b>`);
       setCombatLog((prev: string[]) => [...prev, `New game created! Game Code: ${code}`]);
@@ -691,6 +698,7 @@ function App() {
       const tx = await contract.joinGame(cleanCode);
       showTxToast('pending', tx.hash);
       await tx.wait();
+      localStorage.setItem("gameCode", cleanCode);
       showTxToast('confirmed', tx.hash, undefined, "Successfully joined the game!");
       setCombatLog((prev: string[]) => [...prev, `Joined game with code: ${cleanCode}`]);
       await fetchGameState();
