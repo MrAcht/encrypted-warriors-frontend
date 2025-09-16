@@ -400,6 +400,7 @@ function App() {
   }, [gameState.playersJoined, gameState.myUnit, gameState.lastCombatOutcome, account]);
 
   // Fetch game state on mount and when contract/account changes
+  """  // Fetch game state on mount and when contract/account changes
   useEffect(() => {
     try {
       memoizedFetchGameState();
@@ -408,6 +409,23 @@ function App() {
       setError("Failed to initialize game state");
     }
   }, [memoizedFetchGameState, contract, account]);
+
+  // Listen for PlayerJoined event
+  useEffect(() => {
+    if (!contract) return;
+
+    const handlePlayerJoined = (gameCode: string, player: string) => {
+      console.log("PlayerJoined event received:", { gameCode, player });
+      setToast(`A player has joined the game!`);
+      memoizedFetchGameState();
+    };
+
+    contract.on("PlayerJoined", handlePlayerJoined);
+
+    return () => {
+      contract.off("PlayerJoined", handlePlayerJoined);
+    };
+  }, [contract, memoizedFetchGameState]);""
 
   // Add manual refresh functionality instead of polling
 
