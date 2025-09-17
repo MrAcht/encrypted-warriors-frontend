@@ -457,47 +457,24 @@ function App() {
     }
   }, [fetchGameState, contract, account]);
 
-  const gameStateRef = useRef(gameState);
+  // Poll for game state changes when waiting for a player
   useEffect(() => {
-    gameStateRef.current = gameState;
-  }, [gameState]);
-
-  // Listen for PlayerJoined event and use block polling as a fallback
-  useEffect(() => {
-    if (!contract || !account || !provider) return;
-
-    const storedGameCode = localStorage.getItem("gameCode");
-
-    // Event listener for PlayerJoined
-    const handlePlayerJoined = (gameCode: string, player: string) => {
-      if (gameCode === storedGameCode) {
-        console.log("✅ PlayerJoined event received for the current game:", { gameCode, player });
-        setToast(`A player has joined the game!`);
+    // Only poll if we are waiting for the second player
+    if (gameState.playersJoined === 1) {
+      console.log("Starting to poll for second player...");
+      const interval = setInterval(() => {
+        console.log("Polling for game state...");
         fetchGameState();
-      } else {
-        console.log("PlayerJoined event received for a different game, ignoring.", { receivedCode: gameCode, expectedCode: storedGameCode });
-      }
-    };
+      }, 5000); // Poll every 5 seconds
 
-    console.log("Setting up PlayerJoined listener for account:", account);
-    contract.on("PlayerJoined", handlePlayerJoined);
-
-    // Fallback polling on new blocks, only when waiting for a player
-    const handleBlock = (blockNumber: number) => {
-      if (gameStateRef.current.playersJoined === 1) {
-        console.log(`⚙️ New block mined (${blockNumber}). Checking for player 2 as a fallback.`);
-        fetchGameState();
-      }
-    };
-
-    provider.on("block", handleBlock);
-
-    return () => {
-      console.log("Cleaning up listeners for account:", account);
-      contract.off("PlayerJoined", handlePlayerJoined);
-      provider.off("block", handleBlock);
-    };
-  }, [contract, account, fetchGameState, provider]);
+      // Cleanup function to stop polling when the component unmounts
+      // or when the number of players is no longer 1.
+      return () => {
+        console.log("Stopping polling.");
+        clearInterval(interval);
+      };
+    }
+  }, [gameState.playersJoined, fetchGameState]);
 
   // Add manual refresh functionality instead of polling
   const handleManualRefresh = async () => {
@@ -639,6 +616,14 @@ function App() {
       showTxToast('failed', undefined, err?.message || String(err));
     }
     setLoading(false);
+  }
+
+  // Cancel the current game and create a new one
+  async function handleCancelAndCreateNew() {
+    console.log("Cancelling stale game and creating a new one...");
+    localStorage.removeItem("gameCode");
+    setCreatedGameCode(null);
+    await createNewGame();
   }
 
   // Deploy a new EncryptedWarriors contract
@@ -796,7 +781,21 @@ function App() {
                   <p className="mt-2 text-blue-200">Waiting for second player to join...</p>
                 )}
                 {hasJoined && (
-                  <p className="mt-2 text-green-200">You have joined the game! Waiting for other player...</p>
+                  <div>
+                    <p className="mt-2 text-green-200">You have joined the game! Waiting for other player...</p>
+                    {gameState.player1 === account && (
+                      <div className="mt-4">
+                        <button
+                          onClick={handleCancelAndCreateNew}
+                          className="mt-2 w-full transition-all duration-200 bg-gradient-to-r from-red-600 to-red-800 text-white font-bold py-2 px-4 rounded-xl shadow-lg hover:scale-105"
+                          disabled={loading}
+                        >
+                          Cancel & Start New Game
+                        </button>
+                        <p className="mt-1 text-xs text-gray-400">If no one joins, you can start a new game.</p>
+                      </div>
+                    )}
+                  </div>
                 )}
                 {gameState.playersJoined >= 2 && !hasJoined && (
                   <p className="mt-2 text-red-200">Game is full! You cannot join this game.</p>
