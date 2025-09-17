@@ -626,6 +626,21 @@ function App() {
     await createNewGame();
   }
 
+  function handleLeaveGame() {
+    console.log("Leaving game...");
+    localStorage.removeItem("gameCode");
+    setCreatedGameCode(null);
+    setGameState({
+      playersJoined: 0,
+      player1: null,
+      player2: null,
+      myUnit: null,
+      opponentUnit: null,
+      lastCombatOutcome: null
+    });
+    setToast("You have left the game.");
+  }
+
   // Deploy a new EncryptedWarriors contract
   async function createNewGame() {
     console.log("Starting createNewGame...");
@@ -1146,27 +1161,29 @@ function App() {
             </div>
           )}
           {/* Join Game by Code input above main action */}
-          <div className="my-4">
-            <label htmlFor="join-code" className="block text-sm text-gray-200 mb-1">Have a code? Join a friend’s game:</label>
-            <input
-              id="join-code"
-              type="text"
-              value={joinCode}
-              ref={joinCodeInputRef}
-              onChange={e => {
-                console.log("Input changed to", e.target.value, typeof e.target.value);
-                setJoinCode(e.target.value);
-              }}
-              placeholder="Enter Game Code"
-              className="px-4 py-2 rounded border border-gray-600 bg-gray-800 text-white w-64"
-              maxLength={66}
-              pattern="^0x[0-9a-fA-F]{64}$"
-              aria-label="Game Code"
-            />
-            <button onClick={joinGameByCode} className="ml-2 px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50" disabled={!joinCode || joinCode.trim() === ''}>
-              Join Game
-            </button>
-          </div>
+          {!hasJoined && (
+            <div className="my-4">
+              <label htmlFor="join-code" className="block text-sm text-gray-200 mb-1">Have a code? Join a friend’s game:</label>
+              <input
+                id="join-code"
+                type="text"
+                value={joinCode}
+                ref={joinCodeInputRef}
+                onChange={e => {
+                  console.log("Input changed to", e.target.value, typeof e.target.value);
+                  setJoinCode(e.target.value);
+                }}
+                placeholder="Enter Game Code"
+                className="px-4 py-2 rounded border border-gray-600 bg-gray-800 text-white w-64"
+                maxLength={66}
+                pattern="^0x[0-9a-fA-F]{64}$"
+                aria-label="Game Code"
+              />
+              <button onClick={joinGameByCode} className="ml-2 px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50" disabled={!joinCode || joinCode.trim() === ''}>
+                Join Game
+              </button>
+            </div>
+          )}
           <GameBoard gameState={gameState} account={account} />
           <CombatLog log={combatLog} />
           
