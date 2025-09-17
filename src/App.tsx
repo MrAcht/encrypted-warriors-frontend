@@ -457,24 +457,49 @@ function App() {
     }
   }, [fetchGameState, contract, account]);
 
-  // Listen for PlayerJoined event
+  // Listen for PlayerJoined event and use block polling as a fallback
   useEffect(() => {
-    if (!contract || !account) return;
+    if (!contract || !account || !provider) return;
 
+    const storedGameCode = localStorage.getItem("gameCode");
+
+    // Event listener for PlayerJoined
     const handlePlayerJoined = (gameCode: string, player: string) => {
-      console.log("PlayerJoined event received:", { gameCode, player });
-      setToast(`A player has joined the game!`);
-      fetchGameState();
+      if (gameCode === storedGameCode) {
+        console.log("✅ PlayerJoined event received for the current game:", { gameCode, player });
+        setToast(`A player has joined the game!`);
+        fetchGameState();
+      } else {
+        console.log("PlayerJoined event received for a different game, ignoring.", { receivedCode: gameCode, expectedCode: storedGameCode });
+      }
     };
 
     console.log("Setting up PlayerJoined listener for account:", account);
     contract.on("PlayerJoined", handlePlayerJoined);
 
+    // Fallback polling on new blocks, only when waiting for a player
+    const handleBlock = (blockNumber: number) => {
+      if (gameState.playersJoined === 1) {
+        console.log(`⚙️ New block mined (${blockNumber}). Checking for player 2 as a fallback.`);
+        fetchGameState();
+      }
+    };
+
+    // We only need the fallback if the primary event listener might fail.
+    // Let's attach it when we are in the waiting state.
+    if (gameState.playersJoined === 1) {
+      provider.on("block", handleBlock);
+    }
+
     return () => {
       console.log("Cleaning up PlayerJoined listener for account:", account);
       contract.off("PlayerJoined", handlePlayerJoined);
+      // Make sure to remove the block listener as well
+      if (gameState.playersJoined === 1) {
+        provider.off("block", handleBlock);
+      }
     };
-  }, [contract, account, fetchGameState]);
+  }, [contract, account, fetchGameState, provider, gameState.playersJoined]);
 
   // Add manual refresh functionality instead of polling
   const handleManualRefresh = async () => {
