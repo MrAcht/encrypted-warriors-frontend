@@ -459,7 +459,7 @@ function App() {
 
   // Listen for PlayerJoined event
   useEffect(() => {
-    if (!contract) return;
+    if (!contract || !account) return;
 
     const handlePlayerJoined = (gameCode: string, player: string) => {
       console.log("PlayerJoined event received:", { gameCode, player });
@@ -467,12 +467,14 @@ function App() {
       fetchGameState();
     };
 
+    console.log("Setting up PlayerJoined listener for account:", account);
     contract.on("PlayerJoined", handlePlayerJoined);
 
     return () => {
+      console.log("Cleaning up PlayerJoined listener for account:", account);
       contract.off("PlayerJoined", handlePlayerJoined);
     };
-  }, [contract, fetchGameState]);
+  }, [contract, account, fetchGameState]);
 
   // Add manual refresh functionality instead of polling
   const handleManualRefresh = async () => {
