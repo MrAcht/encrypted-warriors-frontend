@@ -798,30 +798,6 @@ function App() {
                 {hasJoined && (
                   <div>
                     <p className="mt-2 text-green-200">You have joined the game! Waiting for other player...</p>
-                    {gameState.player1 === account && (
-                      <div className="mt-4">
-                        <button
-                          onClick={handleCancelAndCreateNew}
-                          className="mt-2 w-full transition-all duration-200 bg-gradient-to-r from-red-600 to-red-800 text-white font-bold py-2 px-4 rounded-xl shadow-lg hover:scale-105"
-                          disabled={loading}
-                        >
-                          Cancel & Start New Game
-                        </button>
-                        <p className="mt-1 text-xs text-gray-400">If no one joins, you can start a new game.</p>
-                      </div>
-                    )}
-                    {gameState.player2 === account && (
-                      <div className="mt-4">
-                        <button
-                          onClick={handleLeaveGame}
-                          className="mt-2 w-full transition-all duration-200 bg-gradient-to-r from-yellow-600 to-yellow-800 text-white font-bold py-2 px-4 rounded-xl shadow-lg hover:scale-105"
-                          disabled={loading}
-                        >
-                          Leave Game
-                        </button>
-                        <p className="mt-1 text-xs text-gray-400">You can leave this game to join another.</p>
-                      </div>
-                    )}
                   </div>
                 )}
                 {gameState.playersJoined >= 2 && !hasJoined && (
