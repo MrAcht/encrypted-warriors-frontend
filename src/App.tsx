@@ -457,6 +457,11 @@ function App() {
     }
   }, [fetchGameState, contract, account]);
 
+  const gameStateRef = useRef(gameState);
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
   // Listen for PlayerJoined event and use block polling as a fallback
   useEffect(() => {
     if (!contract || !account || !provider) return;
@@ -479,27 +484,20 @@ function App() {
 
     // Fallback polling on new blocks, only when waiting for a player
     const handleBlock = (blockNumber: number) => {
-      if (gameState.playersJoined === 1) {
+      if (gameStateRef.current.playersJoined === 1) {
         console.log(`⚙️ New block mined (${blockNumber}). Checking for player 2 as a fallback.`);
         fetchGameState();
       }
     };
 
-    // We only need the fallback if the primary event listener might fail.
-    // Let's attach it when we are in the waiting state.
-    if (gameState.playersJoined === 1) {
-      provider.on("block", handleBlock);
-    }
+    provider.on("block", handleBlock);
 
     return () => {
-      console.log("Cleaning up PlayerJoined listener for account:", account);
+      console.log("Cleaning up listeners for account:", account);
       contract.off("PlayerJoined", handlePlayerJoined);
-      // Make sure to remove the block listener as well
-      if (gameState.playersJoined === 1) {
-        provider.off("block", handleBlock);
-      }
+      provider.off("block", handleBlock);
     };
-  }, [contract, account, fetchGameState, provider, gameState.playersJoined]);
+  }, [contract, account, fetchGameState, provider]);
 
   // Add manual refresh functionality instead of polling
   const handleManualRefresh = async () => {
